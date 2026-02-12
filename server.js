@@ -10,11 +10,12 @@ app.use(express.static("public"));
 
 let rooms = {};
 
+// Interval voor score update
 setInterval(() => {
     for (let room in rooms) {
         const r = rooms[room];
-        if (r.it && r.players[r.it]) {
-            r.players[r.it].score += 1; // +1 seconde als IT
+        if (r.started && r.it && r.players[r.it]) {
+            r.players[r.it].score += 1; // +1 seconde IT
         }
         io.to(room).emit("updatePlayers", r);
     }
@@ -26,7 +27,12 @@ io.on("connection", (socket) => {
         socket.join(room);
 
         if (!rooms[room]) {
-            rooms[room] = { players: {}, it: null };
+            rooms[room] = {
+                players: {},
+                it: null,
+                started: false,
+                host: socket.id
+            };
         }
 
         rooms[room].players[socket.id] = {
@@ -37,15 +43,21 @@ io.on("connection", (socket) => {
             score: 0
         };
 
-        if (!rooms[room].it) {
-            rooms[room].it = socket.id;
-        }
-
         io.to(room).emit("updatePlayers", rooms[room]);
     });
 
+    socket.on("startGame", (room) => {
+        if (rooms[room] && socket.id === rooms[room].host) {
+            rooms[room].started = true;
+            // willekeurig IT
+            const playerIds = Object.keys(rooms[room].players);
+            rooms[room].it = playerIds[Math.floor(Math.random() * playerIds.length)];
+            io.to(room).emit("updatePlayers", rooms[room]);
+        }
+    });
+
     socket.on("move", ({ room, x, y }) => {
-        if (!rooms[room]) return;
+        if (!rooms[room] || !rooms[room].started) return;
 
         let r = rooms[room];
         let player = r.players[socket.id];
@@ -78,7 +90,6 @@ io.on("connection", (socket) => {
         }
     });
 });
-
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on ${PORT}`));

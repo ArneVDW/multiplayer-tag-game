@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Multiplayer Tag</title>
+    <title>Multiplayer Tag Game</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,9 +12,14 @@
     <button onclick="join()">Join</button>
 </div>
 
-<div id="scoreboard"></div>
+<div id="lobby" style="display:none">
+    <h2>Lobby</h2>
+    <div id="playersList"></div>
+    <button id="startBtn" onclick="startGame()" style="display:none">Start Game</button>
+</div>
 
-<canvas id="game" width="800" height="600"></canvas>
+<div id="scoreboard"></div>
+<canvas id="game" width="800" height="600" style="display:none;"></canvas>
 
 <div id="mobileControls">
     <button ontouchstart="moveDir('up')">↑</button>

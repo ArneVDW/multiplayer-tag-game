@@ -1,0 +1,21 @@
+#scoreboard {
+    margin: 10px;
+    font-size: 18px;
+}
+
+#mobileControls {
+    display: none;
+    margin-top: 10px;
+}
+
+#mobileControls button {
+    font-size: 24px;
+    margin: 5px;
+    padding: 15px;
+}
+
+@media (max-width: 768px) {
+    #mobileControls {
+        display: block;
+    }
+}

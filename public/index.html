@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Multiplayer Tag</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="menu">
+    <input id="name" placeholder="Your name">
+    <input id="room" placeholder="Room code">
+    <button onclick="join()">Join</button>
+</div>
+
+<div id="scoreboard"></div>
+
+<canvas id="game" width="800" height="600"></canvas>
+
+<div id="mobileControls">
+    <button ontouchstart="moveDir('up')">↑</button>
+    <div>
+        <button ontouchstart="moveDir('left')">←</button>
+        <button ontouchstart="moveDir('down')">↓</button>
+        <button ontouchstart="moveDir('right')">→</button>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

@@ -8,10 +8,11 @@ let myId;
 let x = 100;
 let y = 100;
 
+// Smooth movement lerp waarden
 let lerpX = {};
 let lerpY = {};
 
-// Lobby & join
+// Join functie
 function join() {
     const name = document.getElementById("name").value;
     room = document.getElementById("room").value;
@@ -22,14 +23,14 @@ function join() {
     document.getElementById("lobby").style.display = "block";
 }
 
-// Start game (host only)
+// Start game (alleen host)
 function startGame() {
     socket.emit("startGame", room);
     document.getElementById("startBtn").style.display = "none";
     canvas.style.display = "block";
 }
 
-// Update players
+// Update spelers
 socket.on("updatePlayers", (data) => {
     players = data.players;
     myId = socket.id;
@@ -69,36 +70,37 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "d") move("right");
 });
 
-// Touch controls
-function moveDir(dir) { move(dir); }
-
-// Movement + boundaries
+// Beweging + arena boundaries
 function move(dir) {
     if (dir === "up") y -= 5;
     if (dir === "down") y += 5;
     if (dir === "left") x -= 5;
     if (dir === "right") x += 5;
 
+    // Arena boundaries
     x = Math.max(15, Math.min(canvas.width - 15, x));
     y = Math.max(15, Math.min(canvas.height - 15, y));
 
     socket.emit("move", { room, x, y });
 }
 
-// Draw
+// Draw alles met smooth movement
 function draw(itPlayer) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Arena walls
+    // Arena muren
     ctx.strokeStyle = "white";
     ctx.lineWidth = 4;
     ctx.strokeRect(0, 0, canvas.width, canvas.height);
 
     for (let id in players) {
         let p = players[id];
+
+        // Init lerp
         if (!lerpX[id]) lerpX[id] = p.x;
         if (!lerpY[id]) lerpY[id] = p.y;
 
+        // Smooth movement (lerp)
         lerpX[id] += (p.x - lerpX[id]) * 0.2;
         lerpY[id] += (p.y - lerpY[id]) * 0.2;
 

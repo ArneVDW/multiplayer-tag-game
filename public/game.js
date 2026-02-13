@@ -9,6 +9,12 @@ let bullets = [];
 let obstacles = [];
 let started = false;
 
+let mouseX = 0;
+let mouseY = 0;
+
+let reloadTime = 1000;
+let lastShot = 0;
+
 function join() {
     const name = document.getElementById("name").value;
     room = document.getElementById("room").value;
@@ -53,17 +59,35 @@ function updateLobby() {
 
 canvas.addEventListener("mousemove", (e) => {
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    socket.emit("move", { room, x, y });
+    mouseX = e.clientX - rect.left;
+    mouseY = e.clientY - rect.top;
 });
 
 document.addEventListener("keydown", (e) => {
     if (e.code === "Space") {
-        socket.emit("shoot", { room });
+        const now = Date.now();
+        if (now - lastShot > reloadTime) {
+            lastShot = now;
+            socket.emit("shoot", { room });
+        }
     }
 });
+
+function update() {
+    if (!started) return;
+    if (!players[myId]) return;
+    if (players[myId].dead) return;
+
+    const p = players[myId];
+
+    const angle = Math.atan2(mouseY - p.y, mouseX - p.x);
+    const speed = 2.5;
+
+    const newX = p.x + Math.cos(angle) * speed;
+    const newY = p.y + Math.sin(angle) * speed;
+
+    socket.emit("move", { room, x: newX, y: newY });
+}
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -92,9 +116,44 @@ function draw() {
         ctx.beginPath();
         ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
         ctx.fill();
+
+        // Draw name
+        ctx.fillStyle = "white";
+        ctx.fillText(p.name, p.x - 15, p.y - 25);
+
+        // Draw gun
+        if (!p.dead) {
+            ctx.strokeStyle = "red";
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(
+                p.x + Math.cos(p.angle) * 25,
+                p.y + Math.sin(p.angle) * 25
+            );
+            ctx.stroke();
+        }
     }
 
-    requestAnimationFrame(draw);
+    drawReloadBar();
 }
 
-draw();
+function drawReloadBar() {
+    const progress = Math.min((Date.now() - lastShot) / reloadTime, 1);
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(20, canvas.height - 30, 200, 15);
+
+    ctx.fillStyle = "lime";
+    ctx.fillRect(20, canvas.height - 30, 200 * progress, 15);
+
+    ctx.strokeStyle = "white";
+    ctx.strokeRect(20, canvas.height - 30, 200, 15);
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();

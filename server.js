@@ -24,37 +24,41 @@ setInterval(() => {
 io.on("connection", (socket) => {
 
     socket.on("joinRoom", ({ room, name }) => {
-        socket.join(room);
 
-        if (!rooms[room]) {
-            rooms[room] = {
-                players: {},
-                it: null,
-                started: false,
-                host: socket.id
-            };
-        }
+    socket.join(room);
 
-        rooms[room].players[socket.id] = {
-            id: socket.id,
-            name,
-            x: 100 + Math.random() * 400,
-            y: 100 + Math.random() * 300,
-            score: 0
+    if (!rooms[room]) {
+        rooms[room] = {
+            players: {},
+            bullets: [],
+            obstacles: createObstacles(),
+            started: false,
+            host: socket.id
         };
+    }
 
-        io.to(room).emit("updatePlayers", rooms[room]);
-    });
+    rooms[room].players[socket.id] = {
+        id: socket.id,
+        name,
+        x: 200,
+        y: 200,
+        angle: 0,
+        dead: false
+    };
+
+    io.to(room).emit("gameState", rooms[room]);
+});
+
 
     socket.on("startGame", (room) => {
-        if (rooms[room] && socket.id === rooms[room].host) {
-            rooms[room].started = true;
-            // willekeurig IT
-            const playerIds = Object.keys(rooms[room].players);
-            rooms[room].it = playerIds[Math.floor(Math.random() * playerIds.length)];
-            io.to(room).emit("updatePlayers", rooms[room]);
-        }
-    });
+    if (rooms[room] && socket.id === rooms[room].host) {
+        rooms[room].started = true;
+        resetRoom(room);
+
+        // 🔥 STUUR DIRECT NIEUWE STATE
+        io.to(room).emit("gameState", rooms[room]);
+    }
+});
 
     socket.on("move", ({ room, x, y }) => {
         if (!rooms[room] || !rooms[room].started) return;

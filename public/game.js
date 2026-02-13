@@ -1,132 +1,162 @@
-const socket = io();
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 
-let room;
-let myId;
-let players = {};
-let bullets = [];
-let obstacles = [];
-let mouseX = 0;
-let mouseY = 0;
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-let reloadTime = 1000; // 1 seconde
-let lastShot = 0;
+app.use(express.static("public"));
 
-function join() {
-    const name = document.getElementById("name").value;
-    room = document.getElementById("room").value;
+let rooms = {};
 
-    socket.emit("joinRoom", { room, name });
-
-    document.getElementById("menu").style.display = "none";
-    canvas.style.display = "block";
+function createObstacles() {
+    return [
+        { x: 300, y: 150, w: 200, h: 30 },
+        { x: 150, y: 350, w: 300, h: 30 },
+        { x: 600, y: 250, w: 30, h: 200 }
+    ];
 }
 
-canvas.addEventListener("mousemove", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    mouseX = e.clientX - rect.left;
-    mouseY = e.clientY - rect.top;
-});
+function resetRoom(room) {
+    const r = rooms[room];
+    r.started = false;
+    r.bullets = [];
+    r.obstacles = createObstacles();
 
-document.addEventListener("keydown", (e) => {
-    if (e.code === "Space") shoot();
-});
-
-function shoot() {
-    const now = Date.now();
-    if (now - lastShot < reloadTime) return;
-
-    lastShot = now;
-    socket.emit("shoot", { room });
-}
-
-socket.on("gameState", (state) => {
-    players = state.players;
-    bullets = state.bullets;
-    obstacles = state.obstacles;
-    myId = socket.id;
-});
-
-function update() {
-    if (players[myId] && !players[myId].dead) {
-        const p = players[myId];
-
-        const angle = Math.atan2(mouseY - p.y, mouseX - p.x);
-        const speed = 3;
-
-        const newX = p.x + Math.cos(angle) * speed;
-        const newY = p.y + Math.sin(angle) * speed;
-
-        socket.emit("move", { room, x: newX, y: newY });
+    for (let id in r.players) {
+        r.players[id].dead = false;
+        r.players[id].x = 100 + Math.random() * 600;
+        r.players[id].y = 100 + Math.random() * 400;
     }
 }
 
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+io.on("connection", (socket) => {
 
-    // Obstakels
-    ctx.fillStyle = "gray";
-    obstacles.forEach(o => {
-        ctx.fillRect(o.x, o.y, o.w, o.h);
-    });
+    socket.on("joinRoom", ({ room, name }) => {
 
-    // Bullets
-    ctx.fillStyle = "yellow";
-    bullets.forEach(b => {
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
-        ctx.fill();
-    });
+        socket.join(room);
 
-    // Players
-    for (let id in players) {
-        const p = players[id];
-
-        if (p.dead) {
-            ctx.fillStyle = "darkred";
-        } else {
-            ctx.fillStyle = id === myId ? "lime" : "white";
+        if (!rooms[room]) {
+            rooms[room] = {
+                players: {},
+                bullets: [],
+                obstacles: createObstacles(),
+                started: false,
+                host: socket.id
+            };
         }
 
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
-        ctx.fill();
+        rooms[room].players[socket.id] = {
+            id: socket.id,
+            name,
+            x: 200,
+            y: 200,
+            angle: 0,
+            dead: false
+        };
 
-        // Gun direction
-        if (!p.dead) {
-            ctx.strokeStyle = "red";
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(
-                p.x + Math.cos(p.angle) * 25,
-                p.y + Math.sin(p.angle) * 25
-            );
-            ctx.stroke();
+        io.to(room).emit("gameState", rooms[room]);
+    });
+
+    socket.on("startGame", (room) => {
+        if (rooms[room] && socket.id === rooms[room].host) {
+            rooms[room].started = true;
+            resetRoom(room);
         }
+    });
+
+    socket.on("move", ({ room, x, y }) => {
+        const r = rooms[room];
+        if (!r || !r.started) return;
+
+        const p = r.players[socket.id];
+        if (!p || p.dead) return;
+
+        p.angle = Math.atan2(y - p.y, x - p.x);
+        p.x = x;
+        p.y = y;
+    });
+
+    socket.on("shoot", ({ room }) => {
+        const r = rooms[room];
+        if (!r || !r.started) return;
+
+        const p = r.players[socket.id];
+        if (!p || p.dead) return;
+
+        r.bullets.push({
+            x: p.x,
+            y: p.y,
+            angle: p.angle,
+            owner: socket.id
+        });
+    });
+
+    socket.on("disconnect", () => {
+        for (let room in rooms) {
+            delete rooms[room].players[socket.id];
+        }
+    });
+});
+
+setInterval(() => {
+
+    for (let room in rooms) {
+        const r = rooms[room];
+        if (!r.started) continue;
+
+        // Update bullets
+        r.bullets.forEach(b => {
+            b.x += Math.cos(b.angle) * 6;
+            b.y += Math.sin(b.angle) * 6;
+        });
+
+        // Bullet collision
+        r.bullets = r.bullets.filter(b => {
+
+            // Buiten arena
+            if (b.x < 0 || b.x > 800 || b.y < 0 || b.y > 600) return false;
+
+            // Obstacle hit
+            for (let o of r.obstacles) {
+                if (
+                    b.x > o.x &&
+                    b.x < o.x + o.w &&
+                    b.y > o.y &&
+                    b.y < o.y + o.h
+                ) return false;
+            }
+
+            // Player hit
+            for (let id in r.players) {
+                const p = r.players[id];
+                if (id !== b.owner && !p.dead) {
+                    const dist = Math.hypot(p.x - b.x, p.y - b.y);
+                    if (dist < 15) {
+                        p.dead = true;
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        });
+
+        // Check win
+        const alive = Object.values(r.players).filter(p => !p.dead);
+        if (alive.length === 1) {
+            r.started = false;
+
+            setTimeout(() => {
+                resetRoom(room);
+            }, 3000);
+        }
+
+        io.to(room).emit("gameState", r);
     }
 
-    drawReloadBar();
-}
+}, 1000 / 60);
 
-function drawReloadBar() {
-    const now = Date.now();
-    const progress = Math.min((now - lastShot) / reloadTime, 1);
-
-    ctx.fillStyle = "black";
-    ctx.fillRect(20, canvas.height - 30, 200, 15);
-
-    ctx.fillStyle = "lime";
-    ctx.fillRect(20, canvas.height - 30, 200 * progress, 15);
-
-    ctx.strokeStyle = "white";
-    ctx.strokeRect(20, canvas.height - 30, 200, 15);
-}
-
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
-}
-
-gameLoop();
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log("Server running"));

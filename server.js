@@ -29,6 +29,23 @@ setInterval(() => {
     }
 }, 1000);
 
+function resetRoom(room) {
+    const r = rooms[room];
+    if (!r) return;
+
+    r.bullets = [];
+    r.obstacles = createObstacles();
+    r.started = true;
+
+    for (let id in r.players) {
+        r.players[id].dead = false;
+        r.players[id].x = 100 + Math.random() * 600;
+        r.players[id].y = 100 + Math.random() * 400;
+        r.players[id].angle = 0;
+    }
+}
+
+
 io.on("connection", (socket) => {
 
     socket.on("joinRoom", ({ room, name }) => {

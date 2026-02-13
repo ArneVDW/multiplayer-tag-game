@@ -9,6 +9,14 @@ const io = new Server(server);
 app.use(express.static("public"));
 
 let rooms = {};
+function createObstacles() {
+    return [
+        { x: 300, y: 150, w: 200, h: 30 },
+        { x: 150, y: 350, w: 300, h: 30 },
+        { x: 600, y: 250, w: 30, h: 200 }
+    ];
+}
+
 
 // Interval voor score update
 setInterval(() => {
@@ -55,7 +63,6 @@ io.on("connection", (socket) => {
         rooms[room].started = true;
         resetRoom(room);
 
-        // 🔥 STUUR DIRECT NIEUWE STATE
         io.to(room).emit("gameState", rooms[room]);
     }
 });

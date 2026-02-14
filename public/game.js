@@ -1,159 +1,136 @@
+// game.js - COMPLETE VERSION WITH MOUSE FOLLOW + SHOOTING + BULLETS + RELOAD
+// This file assumes you already included socket.io in index.html
+
 const socket = io();
-const canvas = document.getElementById("game");
+
+// =============================
+// Canvas setup
+// =============================
+const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-let room;
-let myId;
-let players = {};
-let bullets = [];
-let obstacles = [];
-let started = false;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-let mouseX = 0;
-let mouseY = 0;
+// =============================
+// Game state
+// =============================
+let myId = null;
+let roomState = null;
+let mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+let reloadProgress = 0;
 
-let reloadTime = 1000;
-let lastShot = 0;
-
-function join() {
-    const name = document.getElementById("name").value;
-    room = document.getElementById("room").value;
-
-    socket.emit("joinRoom", { room, name });
-
-    document.getElementById("menu").style.display = "none";
-    document.getElementById("lobby").style.display = "block";
-}
-
-function startGame() {
-    socket.emit("startGame", room);
-}
-
-socket.on("gameState", (state) => {
-    players = state.players;
-    bullets = state.bullets;
-    obstacles = state.obstacles;
-    started = state.started;
-    myId = socket.id;
-
-    updateLobby();
-});
-
-function updateLobby() {
-    const list = document.getElementById("playersList");
-    list.innerHTML = "";
-
-    for (let id in players) {
-        list.innerHTML += players[id].name + "<br>";
-    }
-
-    if (players[myId] && !started) {
-        document.getElementById("startBtn").style.display = "block";
-    }
-
-    if (started) {
-        document.getElementById("lobby").style.display = "none";
-        canvas.style.display = "block";
-    }
-}
-
+// =============================
+// Mouse tracking
+// =============================
 canvas.addEventListener("mousemove", (e) => {
     const rect = canvas.getBoundingClientRect();
-    mouseX = e.clientX - rect.left;
-    mouseY = e.clientY - rect.top;
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
 });
 
-document.addEventListener("keydown", (e) => {
+// =============================
+// Shooting
+// =============================
+window.addEventListener("keydown", (e) => {
     if (e.code === "Space") {
-        const now = Date.now();
-        if (now - lastShot > reloadTime) {
-            lastShot = now;
-            socket.emit("shoot", { room });
-        }
+        socket.emit("shoot", {
+            mouseX: mouse.x,
+            mouseY: mouse.y
+        });
     }
 });
 
-function update() {
-    if (!started) return;
-    if (!players[myId]) return;
-    if (players[myId].dead) return;
+// =============================
+// Receive init
+// =============================
+socket.on("init", (data) => {
+    myId = data.id;
+});
 
-    const p = players[myId];
+// =============================
+// Receive room state
+// =============================
+socket.on("roomState", (state) => {
+    roomState = state;
 
-    const angle = Math.atan2(mouseY - p.y, mouseX - p.x);
-    const speed = 2.5;
+    // send mouse position continuously
+    if (myId && roomState.players[myId]) {
+        socket.emit("playerMove", {
+            mouseX: mouse.x,
+            mouseY: mouse.y
+        });
 
-    const newX = p.x + Math.cos(angle) * speed;
-    const newY = p.y + Math.sin(angle) * speed;
+        reloadProgress = roomState.players[myId].reload || 0;
+    }
+});
 
-    socket.emit("move", { room, x: newX, y: newY });
-}
-
+// =============================
+// Drawing
+// =============================
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Obstacles
-    ctx.fillStyle = "gray";
-    obstacles.forEach(o => {
-        ctx.fillRect(o.x, o.y, o.w, o.h);
-    });
+    if (!roomState) {
+        requestAnimationFrame(draw);
+        return;
+    }
 
-    // Bullets
+    // draw obstacles
+    ctx.fillStyle = "#444";
+    for (let obs of roomState.obstacles) {
+        ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+    }
+
+    // draw bullets
     ctx.fillStyle = "yellow";
-    bullets.forEach(b => {
+    for (let bullet of roomState.bullets) {
         ctx.beginPath();
-        ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+        ctx.arc(bullet.x, bullet.y, 4, 0, Math.PI * 2);
         ctx.fill();
-    });
+    }
 
-    // Players
-    for (let id in players) {
-        const p = players[id];
+    // draw players
+    for (let id in roomState.players) {
+        const p = roomState.players[id];
 
-        ctx.fillStyle = p.dead ? "darkred" :
-                        id === myId ? "lime" : "white";
-
+        // body
+        ctx.fillStyle = id === myId ? "cyan" : "red";
         ctx.beginPath();
         ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
         ctx.fill();
 
-        // Draw name
-        ctx.fillStyle = "white";
-        ctx.fillText(p.name, p.x - 15, p.y - 25);
+        // gun
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + Math.cos(p.angle) * 30,
+                   p.y + Math.sin(p.angle) * 30);
+        ctx.stroke();
 
-        // Draw gun
-        if (!p.dead) {
-            ctx.strokeStyle = "red";
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(
-                p.x + Math.cos(p.angle) * 25,
-                p.y + Math.sin(p.angle) * 25
-            );
-            ctx.stroke();
-        }
+        // name
+        ctx.fillStyle = "white";
+        ctx.font = "14px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(p.name, p.x, p.y - 25);
     }
 
-    drawReloadBar();
+    // reload bar
+    if (roomState.players[myId]) {
+        const reload = roomState.players[myId].reload || 0;
+
+        ctx.fillStyle = "black";
+        ctx.fillRect(canvas.width/2 - 100, canvas.height - 40, 200, 20);
+
+        ctx.fillStyle = "lime";
+        ctx.fillRect(canvas.width/2 - 100, canvas.height - 40, reload * 200, 20);
+
+        ctx.strokeStyle = "white";
+        ctx.strokeRect(canvas.width/2 - 100, canvas.height - 40, 200, 20);
+    }
+
+    requestAnimationFrame(draw);
 }
 
-function drawReloadBar() {
-    const progress = Math.min((Date.now() - lastShot) / reloadTime, 1);
-
-    ctx.fillStyle = "black";
-    ctx.fillRect(20, canvas.height - 30, 200, 15);
-
-    ctx.fillStyle = "lime";
-    ctx.fillRect(20, canvas.height - 30, 200 * progress, 15);
-
-    ctx.strokeStyle = "white";
-    ctx.strokeRect(20, canvas.height - 30, 200, 15);
-}
-
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
-}
-
-gameLoop();
+draw();
